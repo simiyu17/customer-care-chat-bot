@@ -1,0 +1,43 @@
+
+services:
+  mcp-server:
+    build:
+      context: ./mcp_server
+      dockerfile: Dockerfile
+    environment:
+      - BEARER_TOKEN=${BEARER_TOKEN}
+      # Inside the container localhost is the container itself, so reach Fineract on the host machine
+      - API_URL=${FINERACT_DOCKER_API_URL:-https://host.docker.internal:8443/fineract-provider/api/v1/}
+      - FINERACT_TENANT_ID=${FINERACT_TENANT_ID:-default}
+      - FINERACT_VERIFY_SSL=${FINERACT_VERIFY_SSL:-true}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    expose:
+      - 5000
+
+  agent-api:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MCP_SERVER_URL=http://mcp-server:5000/mcp
+      - ALLOWED_ORIGINS=http://localhost:3000
+    volumes:
+      - ./app/storage:/workspace/storage
+      - ./app/data:/workspace/data
+    depends_on:
+      - mcp-server
+
+  frontend-ui:
+    build:
+      context: ./chat_ui
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - agent-api
