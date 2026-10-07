@@ -51,6 +51,123 @@ async def _fineract_get(path: str, params: dict | None = None) -> tuple[dict | N
         return None, f"The loans service rejected our credentials (HTTP {response.status_code}). The access token may have expired."
     return None, f"Loans service error: HTTP {response.status_code}."
 
+def _amount(value) -> str:
+    """12000 -> '12,000'; keeps decimals only when present; missing -> '–'."""
+    if value is None:
+        return "–"
+    if isinstance(value, (int, float)):
+        return f"{value:,.2f}" if value % 1 else f"{int(value):,}"
+    return str(value)
+
+def _cell(value) -> str:
+    if value is None or value == "":
+        return "–"
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+def _md_table(headers: list[str], rows: list[list]) -> str:
+    lines = ["| " + " | ".join(headers) + " |", "|" + "|".join("---" for _ in headers) + "|"]
+    lines += ["| " + " | ".join(_cell(v) for v in row) + " |" for row in rows]
+    return "\n".join(lines)
+
+def _respond(display: str, data: dict) -> str:
+    """Tool output: a ready-to-show markdown block plus the full data for follow-up questions."""
+    return f"<display>\n{display}\n</display>\n\n<data>\n{json.dumps(data, ensure_ascii=False)}\n</data>"
+
+def _render_client_loans(client_id: str, loans: list[dict]) -> str:
+    if not loans:
+        return f"**Client {client_id}** has no loan accounts."
+    currencies = {l["currency"] for l in loans if l.get("currency")}
+    title = f"**Client {client_id} — {len(loans)} loan{'s' if len(loans) != 1 else ''}**"
+    if len(currencies) == 1:
+        title += f" (amounts in {currencies.pop()})"
+    rows = [
+        [
+            l.get("loanId"),
+            l.get("product"),
+            l.get("status"),
+            _amount(l.get("approvedPrincipal") or l.get("proposedPrincipal") or l.get("originalLoan")),
+            _amount(l.get("amountPaid")),
+            l.get("expectedMaturityOn"),
+        ]
+        for l in loans
+    ]
+    return title + "\n\n" + _md_table(["Loan ID", "Product", "Status", "Principal", "Paid", "Maturity"], rows)
+
+def _installment_status(p: dict) -> str:
+    if p.get("complete"):
+        return f"Paid ({p['paidOn']})" if p.get("paidOn") else "Paid"
+    if p.get("overdue"):
+        return f"Overdue ({_amount(p['overdue'])})"
+    return "Upcoming"
+
+def _render_loan_details(loan: dict) -> str:
+    totals = loan.get("totals", {})
+    delinquency = loan.get("delinquency", {})
+    delivery = loan.get("delivery", {})
+
+    title = f"**Loan {loan.get('loanId')}**"
+    if loan.get("product"):
+        title += f" — {loan['product']}"
+    if loan.get("clientName"):
+        title += f"  \nClient: {loan['clientName']}"
+        if loan.get("clientAccountNo"):
+            title += f" (account {loan['clientAccountNo']})"
+    if loan.get("currency"):
+        title += f"  \nAmounts in {loan['currency']}"
+
+    overview = [
+        ["Status", loan.get("status")],
+        ["Loan type", loan.get("loanType")],
+        ["Account no.", loan.get("accountNo")],
+        ["Principal", _amount(loan.get("principal"))],
+        ["Net disbursed", _amount(loan.get("netDisbursalAmount"))],
+        ["Expected repayment", _amount(totals.get("expectedRepayment"))],
+        ["Repaid", _amount(totals.get("repaid"))],
+        ["Outstanding", _amount(totals.get("outstanding"))],
+        ["Paid in advance", _amount(totals.get("paidInAdvance"))],
+        ["In arrears", loan.get("inArrears")],
+        ["Days past due", delinquency.get("pastDueDays")],
+        ["Term", f"{loan['loanTermInDays']} days" if loan.get("loanTermInDays") else None],
+    ]
+    if delivery:
+        overview.append(["Delivery", " · ".join(str(v) for v in (delivery.get("status"), delivery.get("groupName"), delivery.get("dateDelivered")) if v)])
+    # Three tables: loan details, repayment schedule, transactions
+    sections = [title, "**Loan details**\n\n" + _md_table(["Detail", "Value"], [r for r in overview if r[1] is not None])]
+
+    schedule = loan.get("repaymentSchedule") or []
+    if schedule:
+        rows = [
+            [
+                p.get("period") or "Upfront",
+                p.get("dueDate"),
+                _amount(p.get("due")),
+                _amount(p.get("paid")),
+                _amount(p.get("outstanding")),
+                _installment_status(p),
+            ]
+            for p in schedule
+        ]
+        sections.append("**Repayment schedule**\n\n" + _md_table(["#", "Due date", "Due", "Paid", "Outstanding", "Status"], rows))
+
+    transactions = loan.get("transactions") or []
+    if transactions:
+        rows = [
+            [
+                t.get("date"),
+                t.get("type") + (" (reversed)" if t.get("reversed") else "") if t.get("type") else None,
+                _amount(t.get("amount")),
+                _amount(t.get("balanceAfter")),
+                " · ".join(str(v) for v in (t.get("paymentType"), t.get("receiptNumber") and f"receipt {t['receiptNumber']}") if v)
+                or t.get("description"),
+            ]
+            for t in transactions
+        ]
+        sections.append("**Transactions**\n\n" + _md_table(["Date", "Type", "Amount", "Balance after", "Payment"], rows))
+
+    return "\n\n".join(sections)
+
 def _summarize_loan_account(account: dict) -> dict:
     timeline = account.get("timeline") or {}
     return _compact({
@@ -90,7 +207,7 @@ async def get_client_loans(client_id: str) -> str:
         return error
 
     loans = [_summarize_loan_account(a) for a in data.get("loanAccounts") or []]
-    return json.dumps({"clientId": cid, "loanCount": len(loans), "loans": loans}, ensure_ascii=False)
+    return _respond(_render_client_loans(cid, loans), {"clientId": cid, "loanCount": len(loans), "loans": loans})
 
 @app.tool()
 async def get_loan_details(loan_id: str) -> str:
@@ -152,7 +269,7 @@ async def get_loan_details(loan_id: str) -> str:
         "accountNo": data.get("accountNo") or schedule.get("loanAccountNo"),
         "clientName": data.get("clientName"),
         "clientAccountNo": data.get("clientAccountNo"),
-        "product": data.get("loanProductName"),
+        "product": data.get("loanProductName") or data.get("productName"),
         "loanType": (data.get("loanType") or {}).get("name"),
         "status": (data.get("status") or {}).get("value"),
         "currency": (data.get("currency") or {}).get("code"),
@@ -187,7 +304,7 @@ async def get_loan_details(loan_id: str) -> str:
         "repaymentSchedule": installments,
         "transactions": transactions,
     })
-    return json.dumps(summary, ensure_ascii=False)
+    return _respond(_render_loan_details(summary), summary)
 
 if __name__ == "__main__":
     app.run(transport="streamable-http")

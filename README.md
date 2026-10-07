@@ -65,7 +65,7 @@ It refuses anything outside those two areas, such as general knowledge, politics
 |---|---|---|
 | `app/` | FastAPI gateway, LangGraph agent, policy search (RAG) | FastAPI, LangGraph, LangChain OpenAI, LlamaIndex, MCP client |
 | `mcp_server/` | MCP server that wraps the Fineract loans API | MCP Python SDK (`FastMCP`), httpx |
-| `chat_ui/` | Chat front end | React 18, Vite, Tailwind |
+| `chat_ui/` | Chat front end | React 19, Vite 8, Tailwind 4, react-markdown |
 | `app/data/policies/` | Source policy documents (`.pdf`, `.md`, `.txt`) | |
 | `app/storage/vector_store/` | Saved vector index, generated automatically | |
 
@@ -77,7 +77,17 @@ It refuses anything outside those two areas, such as general knowledge, politics
 
 ### Loan lookups (MCP)
 
-The MCP server doesn't pass Fineract's raw JSON to the model. It returns a compact summary:
+The MCP server doesn't pass Fineract's raw JSON to the model. Each tool returns two parts:
+
+- a `<display>` block of ready-made markdown tables, built in Python so the layout and number formatting are always the same. The agent shows it unchanged, and the UI renders it as tables.
+- a `<data>` block with a compact JSON summary, which the agent uses to answer follow-up questions.
+
+The display tables are:
+
+- **`get_client_loans`**: one table with Loan ID, Product, Status, Principal, Paid and Maturity.
+- **`get_loan_details`**: three tables: loan details, repayment schedule, and transactions.
+
+The JSON summaries contain:
 
 - **`get_client_loans`**: for each loan, the loan ID, account number, product, loan type, status, arrears flag, principal, amount paid, and the main dates (submitted, approved, disbursed, maturity, closed).
 - **`get_loan_details`**: totals (expected, repaid, outstanding, paid in advance or late), delinquency, delivery, the repayment schedule, and transactions with payment type and receipt number.
@@ -91,7 +101,7 @@ Accrual entries, staff usernames and payers' phone numbers are dropped. IDs must
 - An **OpenAI API key** with access to `gpt-4o` and `text-embedding-3-small`
 - A running **Fineract** instance and a **bearer token** for it (a Keycloak access token)
 - For Docker: **Docker Desktop** (or Docker Engine with Compose v2)
-- For running without Docker: **Python 3.11+** and **Node.js 20+**
+- For running without Docker: **Python 3.11+** and **Node.js 24 LTS** (pinned in `.nvmrc`, so run `nvm use` in the project folder)
 
 ### 1. Configure secrets
 

@@ -104,11 +104,18 @@ async def call_model(state: AgentState):
         "4. If a tool executes and returns empty results, state clearly that the specification could not be located in company manuals.\n\n"
         "LOAN LOOKUP RULES:\n"
         "- For questions about a client's loans, call `get_client_loans` with the client ID. If no client ID is given, ask for it.\n"
-        "- When listing loans, give each loan's ID, product, status, principal, amount paid and key dates, "
-        "and tell the user they can ask for any loan ID to see its full details.\n"
+        "- Loan tool results contain a <display> block (markdown tables) and a <data> block (full JSON). "
+        "The <display> tables are ALREADY shown to the user directly above your reply. "
+        "Do NOT repeat, rebuild or list those details again in any form (no tables, no bullet lists of the same fields). "
+        "Reply with at most two short sentences highlighting what matters (e.g. arrears, outstanding balance, the next installment due). "
+        "Use <data> to answer follow-up questions.\n"
+        "- After listing a client's loans, tell the user they can ask for any loan ID to see its full details.\n"
         "- For questions about one specific loan (schedule, repayments, balance, arrears), call `get_loan_details` with the loan ID.\n"
         "- Only report figures that appear in the tool output. Include the currency when the data provides one; never guess it.\n"
-        "- If the tool says a client or loan was not found, or that credentials were rejected, tell the user plainly."
+        "- If the tool says a client or loan was not found, or that credentials were rejected, tell the user plainly.\n\n"
+        "FORMATTING:\n"
+        "- Replies are rendered as markdown. Use short paragraphs, bullet lists and **bold** for key figures; "
+        "use a table only when comparing several items. Do not use headings larger than bold text."
     ))
     
     # One tool call per turn: the router dispatches a single call to either executor node

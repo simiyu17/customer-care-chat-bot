@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import uuid
 import asyncio
@@ -20,6 +21,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Ready-made markdown tables returned by the loan tools (see mcp_server/server.py `_respond`)
+DISPLAY_BLOCK = re.compile(r"<display>\s*(.*?)\s*</display>", re.S)
+
 class ChatPayload(BaseModel):
     message: str
     thread_id: str | None = None  # Conversation id; reuse it to keep chat history across turns
@@ -39,15 +43,24 @@ async def agent_stream_generator(user_message: str, thread_id: str):
                 status_msg = f"Running lookups: Fetching verified data from {node_name}..."
                 yield f"data: {json.dumps({'type': 'status', 'content': status_msg})}\n\n"
 
-            # 2. Capture and filter chat token generation layers
+            # 2. Send loan tool tables straight to the UI so their layout never depends on the model
+            elif kind == "on_chain_end" and event.get("name") == "mcp_executor":
+                for message in (event["data"].get("output") or {}).get("messages", []):
+                    match = DISPLAY_BLOCK.search(str(message.content))
+                    if match:
+                        tables = match.group(1) + "\n\n"
+                        yield f"data: {json.dumps({'type': 'text', 'content': tables})}\n\n"
+
+            # 3. Capture and filter chat token generation layers
             elif kind == "on_chat_model_stream" and node_name == "agent":
                 # Extract the incremental data chunk packet securely
                 chunk_data = event["data"].get("chunk")
                 if chunk_data and hasattr(chunk_data, "content"):
                     content = chunk_data.content
                     
-                    # FIX: Skip processing if the content block is blank/empty (signaling an active tool invocation)
-                    if content and content.strip() != "":
+                    # Skip only empty chunks (tool-call deltas). Whitespace-only chunks carry the
+                    # spaces and line breaks that markdown tables and lists depend on.
+                    if content:
                         yield f"data: {json.dumps({'type': 'text', 'content': content})}\n\n"
                     
             await asyncio.sleep(0.01)

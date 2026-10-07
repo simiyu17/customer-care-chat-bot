@@ -1,6 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+
+// Tailwind styling for markdown elements in bot replies (tables, lists, emphasis)
+const markdownComponents: Components = {
+  p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+  ul: ({ children }) => <ul className="my-2 list-disc pl-5 space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="my-2 list-decimal pl-5 space-y-1">{children}</ol>,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noreferrer" className="text-blue-600 underline">{children}</a>
+  ),
+  code: ({ children }) => <code className="rounded-sm bg-gray-100 px-1 py-0.5 font-mono text-xs">{children}</code>,
+  table: ({ children }) => (
+    <div className="my-3 overflow-x-auto rounded-lg border border-gray-200">
+      <table className="min-w-full text-xs">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => <thead className="bg-gray-50 text-gray-600">{children}</thead>,
+  tr: ({ children }) => <tr className="border-b border-gray-100 last:border-0 even:bg-gray-50/50">{children}</tr>,
+  th: ({ children }) => <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">{children}</th>,
+  td: ({ children }) => <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">{children}</td>,
+};
+
+// Safety net in case the model echoes the raw tool wrapper tags or data block
+const cleanBotText = (text: string) =>
+  text.replace(/<data>[\s\S]*?(<\/data>|$)/g, '').replace(/<\/?display>/g, '').trim();
 
 interface Message {
   id: string;
@@ -135,18 +162,28 @@ export const ChatWindow: React.FC = () => {
               {!isUser && msg.statusLogs && msg.statusLogs.length > 0 && (
                 <div className="mb-1 flex flex-col space-y-0.5 max-w-md">
                   {Array.from(new Set(msg.statusLogs)).map((log, idx) => (
-                    <span key={idx} className="text-[11px] font-mono text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+                    <span key={idx} className="text-[11px] font-mono text-gray-400 bg-gray-100 px-2 py-0.5 rounded-sm">
                       ⚙️ {log}
                     </span>
                   ))}
                 </div>
               )}
 
-              <div className={`max-w-md px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                isUser ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none shadow-sm'
-              }`}>
-                {msg.text || "..."}
-              </div>
+              {isUser ? (
+                <div className="max-w-md px-4 py-2.5 rounded-2xl rounded-br-none text-sm leading-relaxed whitespace-pre-wrap bg-blue-600 text-white">
+                  {msg.text}
+                </div>
+              ) : (
+                <div className="max-w-full px-4 py-2.5 rounded-2xl rounded-bl-none text-sm leading-relaxed bg-white text-gray-800 border border-gray-200 shadow-xs">
+                  {msg.text ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                      {cleanBotText(msg.text)}
+                    </ReactMarkdown>
+                  ) : (
+                    '...'
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
@@ -166,7 +203,7 @@ export const ChatWindow: React.FC = () => {
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask a policy question or about a client's loans..."
           disabled={isLoading}
-          className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500"
         />
         <button type="submit" disabled={isLoading || !input.trim()} className="bg-blue-600 text-white px-5 py-2 text-sm rounded-xl font-medium">
           Send
