@@ -47,7 +47,14 @@ It refuses anything outside those two areas, such as general knowledge, politics
                                    ▼
                      Fineract (https://localhost:8443/fineract-provider/api/v1)
 ```
-<img width="995" height="986" alt="Screenshot 2026-10-03 at 16 52 48" src="https://github.com/user-attachments/assets/09990e0c-c0d4-40dc-a5b2-e02f02f64dd8" />
+<img width="865" height="856" alt="Screenshot 2026-10-07 at 23 52 36" src="https://github.com/user-attachments/assets/4fdca5a7-6749-493a-9e73-f5f58832ef8c" />
+
+<img width="775" height="685" alt="Screenshot 2026-10-07 at 23 53 00" src="https://github.com/user-attachments/assets/54bc7318-9b5a-43c9-af5b-e7a677ee28c7" />
+
+<img width="782" height="664" alt="Screenshot 2026-10-07 at 23 53 15" src="https://github.com/user-attachments/assets/3202d09e-c28e-4fd0-af54-0e8e8087c77f" />
+
+
+
 
 ### What happens to one question
 
